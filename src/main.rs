@@ -6,12 +6,13 @@
 
 extern crate alloc;
 
-use alloc::{boxed::Box, rc::Rc, vec, vec::Vec};
 use blight_os::println;
 use bootloader::{entry_point, BootInfo};
 use core::panic::PanicInfo;
+use blight_os::task::keyboard;
 
-use blight_os::task::{simple_executor::SimpleExecutor, Task};
+use blight_os::task::Task;
+use blight_os::task::executor::Executor;
 
 entry_point!(kernel_main);
 
@@ -30,14 +31,13 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     // new
     allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
 
-    let mut executor = SimpleExecutor::new();
-    executor.spawn(Task::new(example_task()));
-    executor.run();
-
     #[cfg(test)]
     test_main();
 
-    blight_os::hlt_loop();
+    let mut executor = Executor::new();
+    executor.spawn(Task::new(example_task()));
+    executor.spawn(Task::new(keyboard::print_keypresses())); // new
+    executor.run();
 }
 
 /// This function is called on panic.
