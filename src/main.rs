@@ -5,18 +5,18 @@
 #![reexport_test_harness_main = "test_main"]
 
 use blight_os::println;
+use bootloader::{entry_point, BootInfo};
 use core::panic::PanicInfo;
 
-#[no_mangle]
-pub extern "C" fn _start() -> ! {
+entry_point!(kernel_main);
+
+fn kernel_main(boot_info: &'static BootInfo) -> ! {
+    use blight_os::memory::BootInfoFrameAllocator;
     println!("Hello World{}", "!");
 
     blight_os::init();
 
-    use x86_64::registers::control::Cr3;
-
-    let (level_4_page_table, _) = Cr3::read();
-    println!("Level 4 page table at: {:?}", level_4_page_table.start_address());
+    let mut frame_allocator = unsafe { BootInfoFrameAllocator::init(&boot_info.memory_map) };
 
     #[cfg(test)]
     test_main();
