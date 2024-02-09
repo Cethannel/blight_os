@@ -69,8 +69,11 @@ impl InterruptIndex {
     }
 }
 
+static TIMER_COUNT: spin::RwLock<u32> = spin::RwLock::new(0);
+
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
-    print!(".");
+    let mut count = TIMER_COUNT.write();
+    *count += 1;
 
     unsafe {
         PICS.lock()
@@ -91,7 +94,10 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
     }
 }
 
-extern "x86-interrupt" fn page_fault_handler(stack_frame: InterruptStackFrame, error_code: PageFaultErrorCode) {
+extern "x86-interrupt" fn page_fault_handler(
+    stack_frame: InterruptStackFrame,
+    error_code: PageFaultErrorCode,
+) {
     use x86_64::registers::control::Cr2;
 
     println!("EXCEPTION: PAGE FAULT");

@@ -31,6 +31,10 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     // new
     allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
 
+    for bus in 0..=255 {
+        blight_os::pci::check_bus(bus);
+    }
+
     #[cfg(test)]
     test_main();
 
