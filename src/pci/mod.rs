@@ -50,12 +50,17 @@ fn check_device(bus: u8, device: u8) {
     vendor_id = pci_config_read_word(bus, device, function, 0);
     if vendor_id != 0xFFFF {
         check_function(bus, device, function);
+        let header = headers::Header::new(bus, device, function);
+        println!("PCI: Header : {:?}", header);
         let header_type: u8 = pci_config_read_word(bus, device, function, 0x0E) as u8;
         if (header_type & 0x80) != 0 {
             for function in 1..8 {
                 if pci_config_read_word(bus, device, function, 0) != 0xFFFF {
                     check_function(bus, device, function);
-                    println!("PCI: Found multi-function device: bus: {}, device: {}", bus, device);
+                    println!(
+                        "PCI: Found multi-function device: bus: {}, device: {}",
+                        bus, device
+                    );
                 }
             }
         }
@@ -82,7 +87,10 @@ fn check_function(bus: u8, device: u8, function: u8) {
     if (base_class == 0x6) && (sub_class == 0x4) {
         secondary_bus = get_secondary_bus(bus, device, function);
         check_bus(secondary_bus);
-        println!("PCI: Found PCI-to-PCI bridge: bus: {}, device: {}, function: {}", bus, device, function);
+        println!(
+            "PCI: Found PCI-to-PCI bridge: bus: {}, device: {}, function: {}",
+            bus, device, function
+        );
     } else {
         println!(
             "PCI: Found device: bus: {}, device: {}, function: {}, base class: {}, sub class: {}",
