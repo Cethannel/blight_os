@@ -6,13 +6,16 @@
 
 extern crate alloc;
 
+use blight_os::pci::drivers::rtl8139;
+use blight_os::pci::find_network_card;
+use blight_os::pci::get_network_card;
 use blight_os::println;
+use blight_os::task::keyboard;
 use bootloader::{entry_point, BootInfo};
 use core::panic::PanicInfo;
-use blight_os::task::keyboard;
 
-use blight_os::task::Task;
 use blight_os::task::executor::Executor;
+use blight_os::task::Task;
 
 entry_point!(kernel_main);
 
@@ -34,6 +37,16 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     for bus in 0..=255 {
         blight_os::pci::check_bus(bus);
     }
+
+    let network_card = get_network_card();
+
+    println!("{:?}", network_card);
+
+    let rtl8139 = rtl8139::Rtl8139::new(network_card.unwrap()).unwrap();
+
+    rtl8139.software_reset();
+
+    println!("You can now use the network card");
 
     #[cfg(test)]
     test_main();

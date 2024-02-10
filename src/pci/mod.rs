@@ -1,8 +1,11 @@
+pub mod drivers;
 pub mod headers;
 
 use x86_64::instructions::port::Port;
 
 use crate::println;
+
+use self::headers::Header;
 
 pub fn pci_config_read_word(bus: u8, slot: u8, func: u8, offset: u8) -> u16 {
     let mut outport = Port::new(0xCF8);
@@ -21,6 +24,26 @@ pub fn pci_config_read_word(bus: u8, slot: u8, func: u8, offset: u8) -> u16 {
     unsafe {
         outport.write(address);
         ((inport.read() >> ((offset & 2) * 8)) & 0xFFFF) as u16
+    }
+}
+
+pub fn pci_config_write_word(bus: u8, slot: u8, func: u8, offset: u8, data: u16) {
+    let mut outport = Port::new(0xCF8);
+    let mut inport: x86_64::instructions::port::PortGeneric<
+        u32,
+        x86_64::instructions::port::ReadWriteAccess,
+    > = Port::new(0xCFC);
+
+    let address: u32;
+    let lbus = bus as u32;
+    let lslot = slot as u32;
+    let lfunc = func as u32;
+
+    address = (lbus << 16) | (lslot << 11) | (lfunc << 8) | (offset & 0xFC) as u32 | 0x80000000;
+
+    unsafe {
+        outport.write(address);
+        inport.write(data as u32);
     }
 }
 
@@ -44,6 +67,31 @@ fn pci_check_vendor(bus: u8, slot: u8) -> Option<u16> {
     }
 }
 
+pub fn find_network_card() {
+    for bus in 0..=255 {
+        for slot in 0..32 {
+            if let Ok(header) = Header::new(bus, slot, 0) {
+                if header.class == 0x2 {
+                    println!("PCI: Found network card: bus: {}, slot: {}", bus, slot);
+                }
+            }
+        }
+    }
+}
+
+pub fn get_network_card() -> Option<Header> {
+    for bus in 0..=255 {
+        for slot in 0..32 {
+            if let Ok(header) = Header::new(bus, slot, 0) {
+                if header.class == 0x2 {
+                    return Some(header);
+                }
+            }
+        }
+    }
+    None
+}
+
 fn check_device(bus: u8, device: u8) {
     let function: u8 = 0;
     let vendor_id: u16;
@@ -51,6 +99,13 @@ fn check_device(bus: u8, device: u8) {
     if vendor_id != 0xFFFF {
         check_function(bus, device, function);
         let header = headers::Header::new(bus, device, function);
+        println!(
+            "PCI: Found device: bus: {}, device: {}, vendor: {}, device: {}",
+            bus,
+            device,
+            vendor_id,
+            pci_config_read_word(bus, device, function, 2)
+        );
         println!("PCI: Header : {:?}", header);
         let header_type: u8 = pci_config_read_word(bus, device, function, 0x0E) as u8;
         if (header_type & 0x80) != 0 {

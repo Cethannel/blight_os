@@ -48,6 +48,12 @@ test-args = [
     "-display", "none"
 ]
 test-success-exit-code = 33
+run-command = ["qemu-system-x86_64", "-drive", "format=raw,file={}",
+    "-device",
+    "rtl8139,netdev=net0",
+    "-netdev",
+    "user,id=net0"
+]
 
 [[test]]
 name = "should_panic"

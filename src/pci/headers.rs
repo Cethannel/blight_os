@@ -1,5 +1,44 @@
 use super::pci_config_read_word;
 
+#[derive(Debug)]
+pub enum BAR {
+    Memory(MemoryBar),
+    IO(IOBar),
+}
+
+#[derive(Debug)]
+pub struct MemoryBar {
+    pub _type: u8,
+    pub prefetchable: bool,
+    pub address: u32,
+}
+
+#[derive(Debug)]
+pub struct IOBar {
+    pub address: u16,
+}
+
+impl BAR {
+    pub fn new(bus: u8, device: u8, function: u8, index: u8) -> BAR {
+        let low = pci_config_read_word(bus, device, function, 0x10 + index * 4);
+        let high = pci_config_read_word(bus, device, function, 0x10 + index * 4 + 2);
+
+        let address = (high as u32) << 16 | low as u32;
+
+        if (low & 0x1) == 0 {
+            BAR::Memory(MemoryBar {
+                _type: (low & 0x6) as u8,
+                prefetchable: (low & 0x8) != 0,
+                address: address >> 4,
+            })
+        } else {
+            BAR::IO(IOBar {
+                address: (low & 0xFFFC) as u16,
+            })
+        }
+    }
+}
+
 trait GetHeader {
     fn get_header(bus: u8, device: u8, function: u8) -> Self;
 }
@@ -36,18 +75,7 @@ impl Header {
             latency_timer: 0,
             header_type: 0,
             bist: 0,
-            rest_of_header: HeaderType::Standard(StandardHeader {
-                base_address_registers: [0; 6],
-                cardbus_cis_pointer: 0,
-                subsystem_vendor_id: 0,
-                subsystem_id: 0,
-                expansion_rom_base_address: 0,
-                capabilities_pointer: 0,
-                interrupt_line: 0,
-                interrupt_pin: 0,
-                min_grant: 0,
-                max_latency: 0,
-            }),
+            rest_of_header: HeaderType::Unimplemented,
         };
         header.vendor_id = pci_config_read_word(bus, device, function, 0);
         header.device_id = pci_config_read_word(bus, device, function, 2);
@@ -71,6 +99,7 @@ pub enum HeaderType {
     Standard(StandardHeader),
     PciToPciBridge(PciToPciBus),
     CardBusBridge(CardBusBridge),
+    Unimplemented,
 }
 
 impl HeaderType {
@@ -89,7 +118,7 @@ impl HeaderType {
 
 #[derive(Debug)]
 pub struct StandardHeader {
-    pub base_address_registers: [u32; 6],
+    pub base_address_registers: [BAR; 6],
     pub cardbus_cis_pointer: u32,
     pub subsystem_vendor_id: u16,
     pub subsystem_id: u16,
@@ -103,8 +132,17 @@ pub struct StandardHeader {
 
 impl GetHeader for StandardHeader {
     fn get_header(bus: u8, device: u8, function: u8) -> Self {
+        let bars = [
+            BAR::new(bus, device, function, 0),
+            BAR::new(bus, device, function, 1),
+            BAR::new(bus, device, function, 2),
+            BAR::new(bus, device, function, 3),
+            BAR::new(bus, device, function, 4),
+            BAR::new(bus, device, function, 5),
+        ];
+
         let mut header = StandardHeader {
-            base_address_registers: [0; 6],
+            base_address_registers: bars,
             cardbus_cis_pointer: 0,
             subsystem_vendor_id: 0,
             subsystem_id: 0,
@@ -115,13 +153,6 @@ impl GetHeader for StandardHeader {
             min_grant: 0,
             max_latency: 0,
         };
-
-        for i in 0..6 {
-            let offset = 0x10 + i * 4;
-            let low = pci_config_read_word(bus, device, function, offset);
-            let high = pci_config_read_word(bus, device, function, offset + 2);
-            header.base_address_registers[i as usize] = (high as u32) << 16 | low as u32;
-        }
 
         header.cardbus_cis_pointer = pci_config_read_word(bus, device, function, 0x28) as u32;
         header.cardbus_cis_pointer |=
@@ -169,7 +200,83 @@ pub struct PciToPciBus {
 
 impl GetHeader for PciToPciBus {
     fn get_header(bus: u8, device: u8, function: u8) -> Self {
-        todo!()
+        let mut header = PciToPciBus {
+            base_address_registers: [0; 2],
+            primary_bus_number: 0,
+            secondary_bus_number: 0,
+            subordinate_bus_number: 0,
+            secondary_latency_timer: 0,
+            io_base: 0,
+            io_limit: 0,
+            secondary_status: 0,
+            memory_base: 0,
+            memory_limit: 0,
+            prefetchable_memory_base: 0,
+            prefetchable_memory_limit: 0,
+            prefetchable_base_upper_32_bits: 0,
+            prefetchable_limit_upper_32_bits: 0,
+            io_base_upper_16_bits: 0,
+            io_limit_upper_16_bits: 0,
+            capabilities_pointer: 0,
+            expansion_rom_base_address: 0,
+            interrupt_line: 0,
+            interrupt_pin: 0,
+            bridge_control: 0,
+        };
+
+        for i in 0..2 {
+            let offset = 0x10 + i * 4;
+            let low = pci_config_read_word(bus, device, function, offset);
+            let high = pci_config_read_word(bus, device, function, offset + 2);
+            header.base_address_registers[i as usize] = (high as u32) << 16 | low as u32;
+        }
+
+        (header.primary_bus_number, header.secondary_bus_number) =
+            pci_config_read_word(bus, device, function, 0x18).split();
+        (
+            header.subordinate_bus_number,
+            header.secondary_latency_timer,
+        ) = pci_config_read_word(bus, device, function, 0x1A).split();
+
+        (header.io_base, header.io_limit) =
+            pci_config_read_word(bus, device, function, 0x1C).split();
+        header.secondary_status = pci_config_read_word(bus, device, function, 0x1E);
+
+        header.memory_base = pci_config_read_word(bus, device, function, 0x20);
+
+        header.memory_limit = pci_config_read_word(bus, device, function, 0x22);
+
+        header.prefetchable_memory_base = pci_config_read_word(bus, device, function, 0x24);
+
+        header.prefetchable_memory_limit = pci_config_read_word(bus, device, function, 0x26);
+
+        header.prefetchable_base_upper_32_bits =
+            pci_config_read_word(bus, device, function, 0x28) as u32;
+        header.prefetchable_base_upper_32_bits |=
+            (pci_config_read_word(bus, device, function, 0x2A) as u32) << 16;
+
+        header.prefetchable_limit_upper_32_bits =
+            pci_config_read_word(bus, device, function, 0x2C) as u32;
+        header.prefetchable_limit_upper_32_bits |=
+            (pci_config_read_word(bus, device, function, 0x2E) as u32) << 16;
+
+        header.io_base_upper_16_bits = pci_config_read_word(bus, device, function, 0x30);
+
+        header.io_limit_upper_16_bits = pci_config_read_word(bus, device, function, 0x32);
+
+        header.capabilities_pointer = pci_config_read_word(bus, device, function, 0x34) as u8;
+
+        header.expansion_rom_base_address =
+            pci_config_read_word(bus, device, function, 0x38) as u32;
+        header.expansion_rom_base_address |=
+            (pci_config_read_word(bus, device, function, 0x3A) as u32) << 16;
+
+        (header.interrupt_line, header.interrupt_pin) =
+            pci_config_read_word(bus, device, function, 0x3C).split();
+
+        header.bridge_control = pci_config_read_word(bus, device, function, 0x3E);
+
+        header
     }
 }
 
@@ -196,6 +303,6 @@ impl SplitBits<u8> for u16 {
     fn split(&self) -> (u8, u8) {
         let low = *self as u8;
         let high = (*self >> 8) as u8;
-        (high, low)
+        (low, high)
     }
 }
