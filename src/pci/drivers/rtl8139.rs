@@ -85,7 +85,7 @@ impl Rtl8139 {
             );
         }
         */
-        pci_command_reg |= 0b10;
+        pci_command_reg |= 0b100;
         pci_config_write_word(header.bus, header.device, header.function, 0x4, pci_command_reg);
 
         let mut outport = Port::<u8>::new(io_base as u16 + 0x52);
@@ -99,6 +99,7 @@ impl Rtl8139 {
         unsafe {
             outport.write(0x10);
             while (outport.read() & 0x10) != 0 {
+                x86_64::instructions::hlt();
             }
         }
 

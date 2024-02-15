@@ -37,6 +37,7 @@ dependencies = [
  "lazy_static",
  "linked_list_allocator",
  "pc-keyboard",
+ "pci_types",
  "pic8259",
  "spin",
  "uart_16550",
@@ -155,6 +156,16 @@ name = "pc-keyboard"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c6f2d937e3b8d63449b01401e2bae4041bc9dd1129c2e3e0d239407cf6635ac"
+
+[[package]]
+name = "pci_types"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "831e5bebf010674bc2e8070b892948120d4c453c71f37387e1ffea5636620dbe"
+dependencies = [
+ "bit_field",
+ "bitflags 2.4.2",
+]
 
 [[package]]
 name = "pic8259"

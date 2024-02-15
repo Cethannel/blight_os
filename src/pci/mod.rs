@@ -41,9 +41,14 @@ pub fn pci_config_write_word(bus: u8, slot: u8, func: u8, offset: u8, data: u16)
 
     address = (lbus << 16) | (lslot << 11) | (lfunc << 8) | (offset & 0xFC) as u32 | 0x80000000;
 
+    let mut tmp = unsafe { inport.read() };
+    tmp &= !(0xFFFF << ((offset & 0x2) * 8)); // reset the word at the offset
+    tmp |= data << ((offset & 0x2) * 8); // write the data at the offset
+
+
     unsafe {
         outport.write(address);
-        inport.write(data);
+        inport.write(tmp);
     }
 }
 
