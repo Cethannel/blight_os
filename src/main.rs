@@ -38,13 +38,16 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
         blight_os::pci::check_bus(bus);
     }
 
-    let network_card = get_network_card();
+    let network_card = get_network_card().unwrap();
 
-    println!("{:?}", network_card);
+    println!("Netcard: {:?}", network_card);
 
-    let rtl8139 = rtl8139::Rtl8139::new(network_card.unwrap()).unwrap();
+    assert_eq!(network_card.vendor_id, 0x10EC);
+    assert_eq!(network_card.device_id, 0x8139);
 
-    rtl8139.software_reset();
+    let rtl8139 = rtl8139::Rtl8139::new(phys_mem_offset).unwrap();
+
+    println!("{:?}", rtl8139);
 
     println!("You can now use the network card");
 

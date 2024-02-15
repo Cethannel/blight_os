@@ -13,9 +13,9 @@ pub struct MemoryBar {
     pub address: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IOBar {
-    pub address: u16,
+    pub address: u32,
 }
 
 impl BAR {
@@ -33,7 +33,7 @@ impl BAR {
             })
         } else {
             BAR::IO(IOBar {
-                address: (low & 0xFFFC) as u16,
+                address: address >> 2,
             })
         }
     }
@@ -45,6 +45,9 @@ trait GetHeader {
 
 #[derive(Debug)]
 pub struct Header {
+    pub bus: u8,
+    pub device: u8,
+    pub function: u8,
     pub vendor_id: u16,
     pub device_id: u16,
     pub command: u16,
@@ -63,6 +66,9 @@ pub struct Header {
 impl Header {
     pub fn new(bus: u8, device: u8, function: u8) -> Result<Header, HeaderError> {
         let mut header = Header {
+            bus,
+            device,
+            function,
             vendor_id: 0,
             device_id: 0,
             command: 0,
@@ -111,6 +117,13 @@ impl HeaderType {
             ))),
             0x01 => Err(HeaderError::UnimplementedHeaderType),
             0x02 => Err(HeaderError::UnimplementedHeaderType),
+            _ => Err(HeaderError::InvalidHeaderType),
+        }
+    }
+
+    pub fn to_standard(&self) -> Result<&StandardHeader, HeaderError> {
+        match self {
+            HeaderType::Standard(header) => Ok(header),
             _ => Err(HeaderError::InvalidHeaderType),
         }
     }

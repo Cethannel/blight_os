@@ -30,7 +30,7 @@ pub fn pci_config_read_word(bus: u8, slot: u8, func: u8, offset: u8) -> u16 {
 pub fn pci_config_write_word(bus: u8, slot: u8, func: u8, offset: u8, data: u16) {
     let mut outport = Port::new(0xCF8);
     let mut inport: x86_64::instructions::port::PortGeneric<
-        u32,
+        u16,
         x86_64::instructions::port::ReadWriteAccess,
     > = Port::new(0xCFC);
 
@@ -43,7 +43,7 @@ pub fn pci_config_write_word(bus: u8, slot: u8, func: u8, offset: u8, data: u16)
 
     unsafe {
         outport.write(address);
-        inport.write(data as u32);
+        inport.write(data);
     }
 }
 
@@ -152,4 +152,17 @@ fn check_function(bus: u8, device: u8, function: u8) {
             bus, device, function, base_class, sub_class
         );
     }
+}
+
+pub fn get_device(vendor_id: u16, device_id: u16) -> Option<Header> {
+    for bus in 0..=255 {
+        for device in 0..32 {
+            if let Ok(header) = Header::new(bus, device, 0) {
+                if header.vendor_id == vendor_id && header.device_id == device_id {
+                    return Some(header);
+                }
+            }
+        }
+    }
+    None
 }
