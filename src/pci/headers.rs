@@ -27,13 +27,13 @@ impl BAR {
 
         if (low & 0x1) == 0 {
             BAR::Memory(MemoryBar {
-                _type: (low & 0x6) as u8,
+                _type: (low & 0b110) as u8,
                 prefetchable: (low & 0x8) != 0,
-                address: address >> 4,
+                address: (address & !0b1111),
             })
         } else {
             BAR::IO(IOBar {
-                address: address >> 2,
+                address: (address & !0b11),
             })
         }
     }

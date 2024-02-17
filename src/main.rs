@@ -6,6 +6,7 @@
 
 extern crate alloc;
 
+use blight_os::networking::ethernet;
 use blight_os::pci::drivers::rtl8139;
 use blight_os::pci::find_network_card;
 use blight_os::pci::get_network_card;
@@ -42,12 +43,27 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
 
     println!("Netcard: {:?}", network_card);
 
+    println!("Vendor ID: {:X}", network_card.vendor_id);
+    println!("Device ID: {:X}", network_card.device_id);
+
     assert_eq!(network_card.vendor_id, 0x10EC);
     assert_eq!(network_card.device_id, 0x8139);
 
-    let rtl8139 = rtl8139::Rtl8139::new(phys_mem_offset).unwrap();
+    let mut rtl8139 = rtl8139::Rtl8139::new(phys_mem_offset).unwrap();
 
-    println!("{:?}", rtl8139);
+    println!("Mac: {:?}", rtl8139.mac);
+
+    let mut packet = ethernet::Packet::new();
+
+    packet.dest = rtl8139.mac;
+    packet.src = rtl8139.mac;
+    for i in 0..6 {
+        packet.data[i] = i as u8;
+    }
+
+    packet.len = 6;
+
+    rtl8139.send_packet(&packet.to_slice());
 
     println!("You can now use the network card");
 

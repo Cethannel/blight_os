@@ -1,11 +1,12 @@
 use crate::{
+    interrupts::{self, IDT},
     memory,
     pci::{
         self,
         headers::{Header, HeaderType, IOBar, BAR},
         pci_config_write_word,
     },
-    println,
+    print, println,
 };
 
 const BUFFER_SIZE: usize = 8192 + 16;
@@ -16,6 +17,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use x86_64::{
     instructions::port::{Port, PortWriteOnly},
+    structures::idt::InterruptStackFrame,
     VirtAddr,
 };
 
@@ -28,7 +30,7 @@ pub enum Rtl8139Error {
 pub struct Rtl8139 {
     bar: IOBar,
     eeprom_exists: bool,
-    mac: [u8; 6],
+    pub mac: [u8; 6],
     rx_buffer: Vec<u8>,
     tx_cur: u32,
 }
@@ -38,7 +40,8 @@ const RTL8139_DEVICE_ID: u16 = 0x8139;
 
 impl Rtl8139 {
     pub fn new(phys_mem_offset: VirtAddr) -> Result<Rtl8139, Rtl8139Error> {
-        let header = pci::get_device(RTL8139_VENDOR_ID, RTL8139_DEVICE_ID).ok_or(Rtl8139Error::InvalidHeader)?;
+        let header = pci::get_device(RTL8139_VENDOR_ID, RTL8139_DEVICE_ID)
+            .ok_or(Rtl8139Error::InvalidHeader)?;
 
         if header.vendor_id != 0x10EC {
             println!("Vendor ID: {}", header.vendor_id);
@@ -64,12 +67,7 @@ impl Rtl8139 {
 
         let bar = io_base;
 
-        let mem_base = io_base.address & (!0x3);
-        let io_base: u16 = (io_base.address & (!0xf)) as u16;
-
-        println!("IO Base: {:#X}", io_base);
-        println!("Mem Base: {:#X}", mem_base);
-        println!("IO_BASE: {:#X}", bar.address);
+        let io_base: u16 = io_base.address as u16;
 
         let mut pci_command_reg = header.command;
 
@@ -85,8 +83,14 @@ impl Rtl8139 {
             );
         }
         */
-        pci_command_reg |= 0b100;
-        pci_config_write_word(header.bus, header.device, header.function, 0x4, pci_command_reg);
+        pci_command_reg |= 0b101;
+        pci_config_write_word(
+            header.bus,
+            header.device,
+            header.function,
+            0x4,
+            pci_command_reg,
+        );
 
         let mut outport = Port::<u8>::new(io_base as u16 + 0x52);
 
@@ -96,10 +100,16 @@ impl Rtl8139 {
 
         let mut outport = Port::<u8>::new(io_base as u16 + 0x37);
 
+        println!("Resetting...");
+
         unsafe {
             outport.write(0x10);
-            while (outport.read() & 0x10) != 0 {
-                x86_64::instructions::hlt();
+            let mut out = outport.read();
+            while (out & 0x10) != 0 {
+                if out != 0xFF {
+                    println!("Error: {:#X}", out);
+                }
+                out = outport.read();
             }
         }
 
@@ -136,6 +146,12 @@ impl Rtl8139 {
             outport.write(0x0C);
         }
 
+        let mut outport = Port::<u16>::new(io_base as u16 + 0x3E);
+
+        unsafe {
+            outport.write(interrupts::InterruptIndex::RTL8139.as_usize() as u16);
+        }
+
         let mut out = Rtl8139 {
             bar: bar.clone(),
             eeprom_exists: false,
@@ -150,17 +166,58 @@ impl Rtl8139 {
     }
 
     pub fn set_mac_address(&mut self) {
+        self.mac = self.get_mac_address();
+    }
+
+    fn get_mac_address(&self) -> [u8; 6] {
+        let mut mac = [0; 6];
         let mut mac_part1_port = Port::<u32>::new(self.bar.address as u16 + 0);
         let mut mac_part2_port = Port::<u16>::new(self.bar.address as u16 + 4);
 
         let mac_part1 = unsafe { mac_part1_port.read() };
         let mac_part2 = unsafe { mac_part2_port.read() };
 
-        self.mac[0] = (mac_part1 >> 0) as u8;
-        self.mac[1] = (mac_part1 >> 8) as u8;
-        self.mac[2] = (mac_part1 >> 16) as u8;
-        self.mac[3] = (mac_part1 >> 24) as u8;
-        self.mac[4] = (mac_part2 >> 0) as u8;
-        self.mac[5] = (mac_part2 >> 8) as u8;
+        mac[0] = (mac_part1 >> 0) as u8;
+        mac[1] = (mac_part1 >> 8) as u8;
+        mac[2] = (mac_part1 >> 16) as u8;
+        mac[3] = (mac_part1 >> 24) as u8;
+        mac[4] = (mac_part2 >> 0) as u8;
+        mac[5] = (mac_part2 >> 8) as u8;
+
+        mac
+    }
+
+    pub fn send_packet(&mut self, packet: &[u8]) {
+        let mut outport = Port::<u32>::new(self.bar.address as u16 + 0x20);
+
+        unsafe {
+            outport.write(self.tx_cur);
+        }
+
+        let mut tx_cur = self.tx_cur as usize;
+
+        for byte in packet {
+            unsafe {
+                BUFFER[tx_cur] = *byte;
+            }
+            tx_cur += 1;
+        }
+
+        self.tx_cur = (tx_cur as u32) + 4;
+
+        let mut outport = Port::<u32>::new(self.bar.address as u16 + 0x10);
+
+        unsafe {
+            outport.write(0x1);
+        }
+    }
+}
+
+pub extern "x86-interrupt" fn rtl8139_interrupt_handler(_stack_frame: InterruptStackFrame) {
+    let mut outport = Port::<u32>::new(0x20);
+    println!("RTL8139 interrupt");
+
+    unsafe {
+        outport.write(0x20);
     }
 }

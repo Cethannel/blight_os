@@ -1,5 +1,6 @@
 use crate::gdt;
 use crate::hlt_loop;
+use crate::pci::drivers::rtl8139::rtl8139_interrupt_handler;
 use crate::print;
 use crate::println;
 use lazy_static::lazy_static;
@@ -16,7 +17,7 @@ pub static PICS: spin::Mutex<ChainedPics> =
     spin::Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
 
 lazy_static! {
-    static ref IDT: InterruptDescriptorTable = {
+    pub static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
         idt.breakpoint.set_handler_fn(breakpoint_handler);
         unsafe {
@@ -27,6 +28,7 @@ lazy_static! {
         idt.page_fault.set_handler_fn(page_fault_handler);
         idt[InterruptIndex::Timer.as_usize()].set_handler_fn(timer_interrupt_handler);
         idt[InterruptIndex::Keyboard.as_usize()].set_handler_fn(keyboard_interrupt_handler);
+        idt[InterruptIndex::RTL8139.as_usize()].set_handler_fn(rtl8139_interrupt_handler);
         idt
     };
 }
@@ -57,14 +59,15 @@ fn test_breakpoint_exception() {
 pub enum InterruptIndex {
     Timer = PIC_1_OFFSET,
     Keyboard,
+    RTL8139,
 }
 
 impl InterruptIndex {
-    fn as_u8(self) -> u8 {
+    pub fn as_u8(self) -> u8 {
         self as u8
     }
 
-    fn as_usize(self) -> usize {
+    pub fn as_usize(self) -> usize {
         usize::from(self.as_u8())
     }
 }

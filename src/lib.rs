@@ -17,6 +17,7 @@ pub mod allocator;
 pub mod task;
 pub mod fs;
 pub mod pci;
+pub mod networking;
 
 use core::panic::PanicInfo;
 
