@@ -18,6 +18,7 @@ pub mod task;
 pub mod fs;
 pub mod pci;
 pub mod networking;
+pub mod cli;
 
 use core::panic::PanicInfo;
 

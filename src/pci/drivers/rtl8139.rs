@@ -13,8 +13,6 @@ const BUFFER_SIZE: usize = 8192 + 16;
 
 static mut BUFFER: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
 
-use alloc::vec;
-use alloc::vec::Vec;
 use x86_64::{
     instructions::port::{Port, PortWriteOnly},
     structures::idt::InterruptStackFrame,
@@ -31,7 +29,6 @@ pub struct Rtl8139 {
     bar: IOBar,
     eeprom_exists: bool,
     pub mac: [u8; 6],
-    rx_buffer: Vec<u8>,
     tx_cur: u32,
 }
 
@@ -115,13 +112,11 @@ impl Rtl8139 {
 
         println!("Reset complete");
 
-        let rx_buffer = vec![0; 8192 + 16 + 1500];
-
         let mut outport = Port::<u32>::new(io_base as u16 + 0x30);
 
         unsafe {
             outport.write(
-                memory::translate_addr(VirtAddr::new(rx_buffer.as_ptr() as u64), phys_mem_offset)
+                memory::translate_addr(VirtAddr::new(BUFFER.as_ptr() as u64), phys_mem_offset)
                     .ok_or(Rtl8139Error::InvalidHeader)?
                     .as_u64() as u32,
             );
@@ -156,7 +151,6 @@ impl Rtl8139 {
             bar: bar.clone(),
             eeprom_exists: false,
             mac: [0; 6],
-            rx_buffer,
             tx_cur: 0,
         };
 
